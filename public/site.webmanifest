@@ -1,0 +1,13 @@
+{
+  "name": "Олійник Меблі — класичні меблі з різьбою",
+  "short_name": "Олійник Меблі",
+  "description": "Класичні меблі з масиву вільхи з різьбою на ЧПК.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0A0A0A",
+  "theme_color": "#C8A96E",
+  "lang": "uk",
+  "icons": [
+    { "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }
+  ]
+}

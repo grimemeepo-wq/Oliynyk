@@ -1,0 +1,10 @@
+.next/
+node_modules/
+data/
+.env.local
+*.db
+*.db-shm
+*.db-wal
+.DS_Store
+*.log
+public/uploads/

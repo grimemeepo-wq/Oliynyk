@@ -1,0 +1,39 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm run *)",
+      "Bash(npx tsc *)",
+      "Bash(curl -s http://localhost:3000/admin/login -o /dev/null -w \"%{http_code}\")",
+      "Bash(curl -s \"https://api.telegram.org/bot1001286514:AAHc9Qus5gG-golbSduzNv4IgmQX2HRhuwY/getMe\")",
+      "Bash(curl -s -X POST \"https://api.telegram.org/bot1001286514:AAHc9Qus5gG-golbSduzNv4IgmQX2HRhuwY/sendMessage\" -H \"Content-Type: application/json\" -d '{\"chat_id\": \"466085621\", \"text\": \"✅ <b>Олійник Меблі</b>\\\\n\\\\nТелеграм-сповіщення підключено! Тепер кожне замовлення та заявка на консультацію будуть приходити сюди.\", \"parse_mode\": \"HTML\"}')",
+      "Bash(curl -s -X POST \"https://api.telegram.org/bot1001286514:AAHc9Qus5gG-golbSduzNv4IgmQX2HRhuwY/sendMessage\" --data-urlencode \"chat_id=466085621\" --data-urlencode \"text=Telegram підключено! Замовлення Олійник Меблі будуть приходити сюди.\" --data-urlencode \"parse_mode=HTML\")",
+      "Bash(python3 -c ' *)",
+      "Bash(winget install *)",
+      "Bash(cloudflared tunnel *)",
+      "Bash(jobs -l)",
+      "PowerShell(cloudflared --version)",
+      "Read(//c/Program Files \\(x86\\)/cloudflared/**)",
+      "PowerShell(& \"C:\\\\Program Files \\(x86\\)\\\\cloudflared\\\\cloudflared.exe\" --version)",
+      "PowerShell(Get-Process -Name \"node\" -ErrorAction SilentlyContinue | Where-Object { $_.MainWindowTitle -eq \"\" } | Select-Object Id, CPU, WorkingSet, StartTime | Sort-Object StartTime)",
+      "PowerShell(Stop-Process -Id 5400 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 1512 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(Stop-Process -Id 17776 -Force -ErrorAction SilentlyContinue)",
+      "PowerShell(\"Killed old node processes\")",
+      "Bash(curl -s -X POST http://localhost:3000/api/orders -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(curl -s -X POST http://localhost:3000/api/consultations -H 'Content-Type: application/json' -d '{ *)",
+      "Bash(curl -s -I \"https://yummy-grapes-type.loca.lt\")",
+      "PowerShell(ssh -V 2>&1)",
+      "Bash(curl -s -I \"https://651bde02e7bbbf83-213-174-20-47.serveousercontent.com\")",
+      "Bash(node -e ' *)",
+      "Bash(curl -s \"https://651bde02e7bbbf83-213-174-20-47.serveousercontent.com\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/admin/login)",
+      "PowerShell(Start-Process \"C:\\\\Users\\\\User\\\\Desktop\\\\oliynyk-logos.html\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000)",
+      "Bash(git init *)",
+      "Bash(git add *)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\User\\Desktop"
+    ]
+  }
+}
