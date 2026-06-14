@@ -1,146 +1,228 @@
-/**
- * lib/db.ts
- * JSON-based database — no native modules, works on any OS without compilation.
- * Stores data in data/*.json files. Safe for single-server deployments.
- */
-
-import path from 'path'
-import fs from 'fs'
+import { supabase } from './supabase'
 import type { Product, Order, Consultation, CategoryDef } from './types'
 import crypto from 'crypto'
 
-const DATA_DIR = path.join(process.cwd(), 'data')
+// ─── Mappers ──────────────────────────────────────────────────────────────────
 
-function ensureDir() {
-  if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true })
+function toProduct(r: Record<string, unknown>): Product {
+  return {
+    id: r.id as string,
+    name: r.name as string,
+    cat: r.cat as Product['cat'],
+    price: r.price as number,
+    oldPrice: (r.old_price as number | null) ?? null,
+    badge: (r.badge as Product['badge']) || '',
+    emoji: (r.emoji as string) || '🪵',
+    rating: (r.rating as number) || 5,
+    desc: (r.description as string) || '',
+    photos: (r.photos as string[]) || [],
+    options: (r.options as Product['options']) || [],
+    featured: (r.featured as boolean) || false,
+    hit: (r.hit as boolean) || false,
+    sortOrder: (r.sort_order as number) ?? 0,
+  }
 }
 
-function readJSON<T>(file: string, fallback: T): T {
-  ensureDir()
-  const p = path.join(DATA_DIR, file)
-  if (!fs.existsSync(p)) return fallback
-  try { return JSON.parse(fs.readFileSync(p, 'utf-8')) } catch { return fallback }
+function toOrder(r: Record<string, unknown>): Order {
+  return {
+    id: r.id as string,
+    date: r.created_at as string,
+    customer: r.customer as Order['customer'],
+    items: r.items as Order['items'],
+    total: r.total as number,
+    status: r.status as Order['status'],
+    source: (r.source as string) || 'site',
+  }
 }
 
-function writeJSON(file: string, data: unknown) {
-  ensureDir()
-  fs.writeFileSync(path.join(DATA_DIR, file), JSON.stringify(data, null, 2))
+function toConsultation(r: Record<string, unknown>): Consultation {
+  return {
+    id: r.id as string,
+    date: r.created_at as string,
+    name: r.name as string,
+    phone: r.phone as string,
+    email: (r.email as string) || '',
+    category: (r.category as string) || '',
+    comment: (r.comment as string) || '',
+    status: r.status as Consultation['status'],
+  }
 }
 
-// ─── Seed defaults ────────────────────────────────────────────────────────────
-const DEFAULT_PRODUCTS: Product[] = [
-  { id:'p1', name:'Стіл «Карпати»', cat:'table', price:18500, oldPrice:null, badge:'top', emoji:'🪵', rating:5, desc:'Масивний обідній стіл з вільхи з різьбою на ЧПК', photos:[], featured:false, hit:false, sortOrder:0, options:[{name:'Розмір',type:'chips',values:[{label:'120×80 см',price:0},{label:'150×90 см',price:2000},{label:'180×90 см',price:4500}]},{name:'Матеріал',type:'chips',values:[{label:'Масив вільхи',price:0},{label:'Шпон МДФ',price:-3000}]}] },
-  { id:'p2', name:'Крісло «Едельвейс»', cat:'chair', price:12800, oldPrice:15200, badge:'sale', emoji:'🪑', rating:5, desc:'Класичне крісло з різьбою на ЧПК, масив вільхи', photos:[], featured:true, hit:true, sortOrder:1, options:[{name:'Оббивка',type:'chips',values:[{label:'Велюр бежевий',price:0},{label:'Велюр сірий',price:0},{label:'Шкіра',price:2500}]},{name:'Колір дерева',type:'color',values:[{label:'Темний горіх',color:'#2C1A0E',price:0},{label:'Золотий',color:'#C8A96E',price:0}]}] },
-  { id:'p3', name:'Гарнітур «Дніпро»', cat:'living', price:38000, oldPrice:null, badge:'new', emoji:'🛋️', rating:5, desc:'Класичний гарнітур для вітальні, шпон МДФ', photos:[], featured:false, hit:false, sortOrder:2, options:[{name:'Конфігурація',type:'chips',values:[{label:'Диван + 2 крісла',price:0},{label:'Тільки диван',price:-12000}]}] },
-  { id:'p4', name:'Стіл «Софія»', cat:'table', price:22000, oldPrice:null, badge:'top', emoji:'🪵', rating:5, desc:'Розкладний стіл для 8 осіб, різьба на ЧПК', photos:[], featured:false, hit:true, sortOrder:3, options:[{name:'Розмір',type:'chips',values:[{label:'140×90 см',price:0},{label:'160×90 см',price:3000}]},{name:'Матеріал',type:'chips',values:[{label:'Масив вільхи',price:0},{label:'Шпон МДФ',price:-4000}]}] },
-  { id:'p5', name:'Крісло «Полонина»', cat:'chair', price:9800, oldPrice:12000, badge:'sale', emoji:'🪑', rating:4, desc:'Компактне класичне крісло, шпон ДСП', photos:[], featured:false, hit:false, sortOrder:4, options:[{name:'Оббивка',type:'chips',values:[{label:'Тканина бежева',price:0},{label:'Шкіра',price:2000}]}] },
-  { id:'p6', name:'Спальня «Верховина»', cat:'bedroom', price:68000, oldPrice:null, badge:'new', emoji:'🛏️', rating:5, desc:"Класичний спальний гарнітур, різьблене узголів'я ЧПК", photos:[], featured:false, hit:false, sortOrder:5, options:[{name:'Розмір ліжка',type:'chips',values:[{label:'160×200 см',price:0},{label:'180×200 см',price:5000}]},{name:'Матеріал',type:'chips',values:[{label:'Масив вільхи',price:0},{label:'Шпон МДФ',price:-12000}]}] },
-  { id:'p7', name:'Стіл «Говерла»', cat:'table', price:15800, oldPrice:18000, badge:'sale', emoji:'🪵', rating:5, desc:'Журнальний столик з різьбою ЧПК', photos:[], featured:false, hit:false, sortOrder:6, options:[{name:'Розмір',type:'chips',values:[{label:'80×50 см',price:0},{label:'100×60 см',price:2000}]}] },
-  { id:'p8', name:'Диван «Львів»', cat:'living', price:45000, oldPrice:null, badge:'top', emoji:'🛋️', rating:5, desc:'Класичний диван з різьбленою рамою, масив вільхи', photos:[], featured:false, hit:true, sortOrder:7, options:[{name:'Розмір',type:'chips',values:[{label:'200 см',price:0},{label:'230 см',price:5000}]},{name:'Тканина',type:'chips',values:[{label:'Велюр бежевий',price:0},{label:'Шкіра',price:8000}]}] },
-  { id:'p9', name:'Спальня «Буковина»', cat:'bedroom', price:82000, oldPrice:null, badge:'top', emoji:'🛏️', rating:5, desc:'Розкішний спальний гарнітур з масиву вільхи', photos:[], featured:false, hit:false, sortOrder:8, options:[{name:'Розмір ліжка',type:'chips',values:[{label:'160×200 см',price:0},{label:'180×200 см',price:6000}]}] },
-  { id:'p10', name:'Стіл «Писанка»', cat:'table', price:13200, oldPrice:null, badge:'', emoji:'🪵', rating:4, desc:'Робочий стіл, шпон МДФ', photos:[], featured:false, hit:false, sortOrder:9, options:[{name:'Розмір',type:'chips',values:[{label:'120×60 см',price:0},{label:'140×70 см',price:2500}]}] },
-  { id:'p11', name:'Крісло «Козак»', cat:'chair', price:11200, oldPrice:13500, badge:'sale', emoji:'🪑', rating:5, desc:'Класичне крісло-качалка, масив вільхи', photos:[], featured:false, hit:false, sortOrder:10, options:[] },
-  { id:'p12', name:'Вітальня «Галичина»', cat:'living', price:54000, oldPrice:null, badge:'', emoji:'🛋️', rating:4, desc:'Комплект меблів для вітальні, шпон МДФ', photos:[], featured:false, hit:false, sortOrder:11, options:[{name:'Комплектація',type:'chips',values:[{label:'Повний комплект',price:0},{label:'Тільки диван',price:-18000}]}] },
+// ─── Default seed data ────────────────────────────────────────────────────────
+
+const DEFAULT_PRODUCTS: Omit<Product, 'id'>[] = [
+  { name:'Стіл «Карпати»', cat:'table', price:18500, oldPrice:null, badge:'top', emoji:'🪵', rating:5, desc:'Масивний обідній стіл з вільхи з різьбою на ЧПК', photos:[], featured:false, hit:false, sortOrder:0, options:[{name:'Розмір',type:'chips',values:[{label:'120×80 см',price:0},{label:'150×90 см',price:2000},{label:'180×90 см',price:4500}]},{name:'Матеріал',type:'chips',values:[{label:'Масив вільхи',price:0},{label:'Шпон МДФ',price:-3000}]}] },
+  { name:'Крісло «Едельвейс»', cat:'chair', price:12800, oldPrice:15200, badge:'sale', emoji:'🪑', rating:5, desc:'Класичне крісло з різьбою на ЧПК, масив вільхи', photos:[], featured:true, hit:true, sortOrder:1, options:[{name:'Оббивка',type:'chips',values:[{label:'Велюр бежевий',price:0},{label:'Велюр сірий',price:0},{label:'Шкіра',price:2500}]},{name:'Колір дерева',type:'color',values:[{label:'Темний горіх',color:'#2C1A0E',price:0},{label:'Золотий',color:'#C8A96E',price:0}]}] },
+  { name:'Гарнітур «Дніпро»', cat:'living', price:38000, oldPrice:null, badge:'new', emoji:'🛋️', rating:5, desc:'Класичний гарнітур для вітальні, шпон МДФ', photos:[], featured:false, hit:false, sortOrder:2, options:[{name:'Конфігурація',type:'chips',values:[{label:'Диван + 2 крісла',price:0},{label:'Тільки диван',price:-12000}]}] },
+  { name:'Стіл «Софія»', cat:'table', price:22000, oldPrice:null, badge:'top', emoji:'🪵', rating:5, desc:'Розкладний стіл для 8 осіб, різьба на ЧПК', photos:[], featured:false, hit:true, sortOrder:3, options:[{name:'Розмір',type:'chips',values:[{label:'140×90 см',price:0},{label:'160×90 см',price:3000}]},{name:'Матеріал',type:'chips',values:[{label:'Масив вільхи',price:0},{label:'Шпон МДФ',price:-4000}]}] },
+  { name:'Крісло «Полонина»', cat:'chair', price:9800, oldPrice:12000, badge:'sale', emoji:'🪑', rating:4, desc:'Компактне класичне крісло, шпон ДСП', photos:[], featured:false, hit:false, sortOrder:4, options:[{name:'Оббивка',type:'chips',values:[{label:'Тканина бежева',price:0},{label:'Шкіра',price:2000}]}] },
+  { name:'Спальня «Верховина»', cat:'bedroom', price:68000, oldPrice:null, badge:'new', emoji:'🛏️', rating:5, desc:"Класичний спальний гарнітур, різьблене узголів'я ЧПК", photos:[], featured:false, hit:false, sortOrder:5, options:[{name:'Розмір ліжка',type:'chips',values:[{label:'160×200 см',price:0},{label:'180×200 см',price:5000}]},{name:'Матеріал',type:'chips',values:[{label:'Масив вільхи',price:0},{label:'Шпон МДФ',price:-12000}]}] },
+]
+
+const DEFAULT_CATEGORIES: CategoryDef[] = [
+  { slug:'all',     label:'Всі товари',       order:0 },
+  { slug:'table',   label:'Столи',            order:1 },
+  { slug:'chair',   label:'Крісла',           order:2 },
+  { slug:'living',  label:'Меблі у вітальню', order:3 },
+  { slug:'bedroom', label:'Спальні',          order:4 },
 ]
 
 // ─── Products ─────────────────────────────────────────────────────────────────
+
 export async function getAllProducts(): Promise<Product[]> {
-  const data = readJSON<Product[]>('products.json', [])
-  if (data.length === 0) {
-    writeJSON('products.json', DEFAULT_PRODUCTS)
-    return DEFAULT_PRODUCTS
+  const { data, error } = await supabase
+    .from('products')
+    .select('*')
+    .order('sort_order', { ascending: true })
+
+  if (error) throw error
+
+  if (!data || data.length === 0) {
+    const rows = DEFAULT_PRODUCTS.map((p, i) => ({
+      id: 'p' + (Date.now() + i),
+      name: p.name, cat: p.cat, price: p.price,
+      old_price: p.oldPrice, badge: p.badge, emoji: p.emoji,
+      rating: p.rating, description: p.desc, photos: p.photos,
+      options: p.options, featured: p.featured, hit: p.hit, sort_order: p.sortOrder,
+    }))
+    const { data: seeded } = await supabase.from('products').insert(rows).select()
+    return (seeded || []).map(r => toProduct(r as Record<string, unknown>))
   }
-  return data.sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0))
+
+  return data.map(r => toProduct(r as Record<string, unknown>))
 }
 
-export async function createProduct(p: Omit<Product, 'sortOrder'>): Promise<string> {
-  const all = await getAllProducts()
+export async function createProduct(p: Omit<Product, 'id' | 'sortOrder'>): Promise<string> {
+  const { data: existing } = await supabase.from('products').select('sort_order').order('sort_order', { ascending: false }).limit(1)
+  const maxSort = existing?.[0]?.sort_order ?? 0
   const id = 'p' + Date.now()
-  const maxSort = all.reduce((m, x) => Math.max(m, x.sortOrder ?? 0), 0)
-  all.push({ ...p, id, sortOrder: maxSort + 1 })
-  writeJSON('products.json', all)
+
+  const { error } = await supabase.from('products').insert({
+    id, name: p.name, cat: p.cat, price: p.price,
+    old_price: p.oldPrice, badge: p.badge, emoji: p.emoji,
+    rating: p.rating, description: p.desc, photos: p.photos,
+    options: p.options, featured: p.featured, hit: p.hit,
+    sort_order: maxSort + 1,
+  })
+  if (error) throw error
   return id
 }
 
 export async function updateProduct(id: string, p: Partial<Product>): Promise<void> {
-  const all = await getAllProducts()
-  const idx = all.findIndex(x => x.id === id)
-  if (idx >= 0) all[idx] = { ...all[idx], ...p, id }
-  writeJSON('products.json', all)
+  const patch: Record<string, unknown> = {}
+  if (p.name       !== undefined) patch.name        = p.name
+  if (p.cat        !== undefined) patch.cat         = p.cat
+  if (p.price      !== undefined) patch.price       = p.price
+  if (p.oldPrice   !== undefined) patch.old_price   = p.oldPrice
+  if (p.badge      !== undefined) patch.badge       = p.badge
+  if (p.emoji      !== undefined) patch.emoji       = p.emoji
+  if (p.rating     !== undefined) patch.rating      = p.rating
+  if (p.desc       !== undefined) patch.description = p.desc
+  if (p.photos     !== undefined) patch.photos      = p.photos
+  if (p.options    !== undefined) patch.options     = p.options
+  if (p.featured   !== undefined) patch.featured    = p.featured
+  if (p.hit        !== undefined) patch.hit         = p.hit
+  if (p.sortOrder  !== undefined) patch.sort_order  = p.sortOrder
+
+  const { error } = await supabase.from('products').update(patch).eq('id', id)
+  if (error) throw error
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const all = await getAllProducts()
-  writeJSON('products.json', all.filter(p => p.id !== id))
+  const { error } = await supabase.from('products').delete().eq('id', id)
+  if (error) throw error
 }
 
-// Reorder products by passing ordered array of ids
 export async function reorderProducts(ids: string[]): Promise<void> {
-  const all = await getAllProducts()
-  const map = new Map(all.map(p => [p.id, p]))
-  const reordered = ids.map((id, i) => {
-    const p = map.get(id)
-    return p ? { ...p, sortOrder: i } : null
-  }).filter(Boolean) as Product[]
-  // Keep any products not in the ids list at the end
-  const rest = all.filter(p => !ids.includes(p.id)).map((p, i) => ({ ...p, sortOrder: ids.length + i }))
-  writeJSON('products.json', [...reordered, ...rest])
+  await Promise.all(
+    ids.map((id, i) =>
+      supabase.from('products').update({ sort_order: i }).eq('id', id)
+    )
+  )
 }
 
 // ─── Orders ───────────────────────────────────────────────────────────────────
+
 export async function getAllOrders(): Promise<Order[]> {
-  return readJSON<Order[]>('orders.json', [])
+  const { data, error } = await supabase
+    .from('orders')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(r => toOrder(r as Record<string, unknown>))
 }
 
 export async function createOrder(o: Omit<Order, 'id' | 'date'>): Promise<string> {
-  const all = await getAllOrders()
   const id = 'ORD-' + Date.now().toString(36).toUpperCase()
-  const order: Order = { ...o, id, date: new Date().toISOString() }
-  all.unshift(order)
-  writeJSON('orders.json', all)
+  const { error } = await supabase.from('orders').insert({
+    id,
+    customer: o.customer,
+    items: o.items,
+    total: o.total,
+    status: o.status,
+    source: o.source,
+  })
+  if (error) throw error
   return id
 }
 
 export async function updateOrderStatus(id: string, status: string): Promise<void> {
-  const all = await getAllOrders()
-  const o = all.find(x => x.id === id)
-  if (o) o.status = status as Order['status']
-  writeJSON('orders.json', all)
+  const { error } = await supabase.from('orders').update({ status }).eq('id', id)
+  if (error) throw error
 }
 
 // ─── Consultations ────────────────────────────────────────────────────────────
+
 export async function getAllConsultations(): Promise<Consultation[]> {
-  return readJSON<Consultation[]>('consultations.json', [])
+  const { data, error } = await supabase
+    .from('consultations')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) throw error
+  return (data || []).map(r => toConsultation(r as Record<string, unknown>))
 }
 
 export async function createConsultation(c: Omit<Consultation, 'id' | 'date' | 'status'>): Promise<string> {
-  const all = await getAllConsultations()
   const id = 'CON-' + Date.now().toString(36).toUpperCase()
-  all.unshift({ ...c, id, date: new Date().toISOString(), status: 'new' })
-  writeJSON('consultations.json', all)
+  const { error } = await supabase.from('consultations').insert({
+    id,
+    name: c.name,
+    phone: c.phone,
+    email: c.email || null,
+    category: c.category || null,
+    comment: c.comment || null,
+  })
+  if (error) throw error
   return id
 }
 
+export async function updateConsultationStatus(id: string, status: string): Promise<void> {
+  const { error } = await supabase.from('consultations').update({ status }).eq('id', id)
+  if (error) throw error
+}
+
 // ─── Admin sessions ───────────────────────────────────────────────────────────
-interface Session { token: string; expiresAt: string }
 
 export async function saveSession(token: string): Promise<void> {
-  const sessions = readJSON<Session[]>('sessions.json', [])
   const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
-  sessions.push({ token, expiresAt })
-  writeJSON('sessions.json', sessions.filter(s => new Date(s.expiresAt) > new Date()))
+  await supabase.from('admin_sessions').insert({ token, expires_at: expiresAt })
+  // Cleanup expired sessions
+  await supabase.from('admin_sessions').delete().lt('expires_at', new Date().toISOString())
 }
 
 export async function validateSession(token: string): Promise<boolean> {
   if (!token) return false
-  const sessions = readJSON<Session[]>('sessions.json', [])
-  const s = sessions.find(x => x.token === token)
-  return !!s && new Date(s.expiresAt) > new Date()
+  const { data } = await supabase
+    .from('admin_sessions')
+    .select('token')
+    .eq('token', token)
+    .gt('expires_at', new Date().toISOString())
+    .maybeSingle()
+  return !!data
 }
 
 export async function deleteSession(token: string): Promise<void> {
-  const sessions = readJSON<Session[]>('sessions.json', [])
-  writeJSON('sessions.json', sessions.filter(s => s.token !== token))
+  await supabase.from('admin_sessions').delete().eq('token', token)
 }
 
 export async function makeToken(): Promise<string> {
@@ -148,37 +230,53 @@ export async function makeToken(): Promise<string> {
 }
 
 // ─── Categories ───────────────────────────────────────────────────────────────
-const DEFAULT_CATEGORIES: CategoryDef[] = [
-  { slug: 'all', label: 'Всі товари', order: 0 },
-  { slug: 'table', label: 'Столи', order: 1 },
-  { slug: 'chair', label: 'Крісла', order: 2 },
-  { slug: 'living', label: 'Меблі у вітальню', order: 3 },
-  { slug: 'bedroom', label: 'Спальні', order: 4 },
-]
 
 export async function getAllCategories(): Promise<CategoryDef[]> {
-  const data = readJSON<CategoryDef[]>('categories.json', [])
-  if (data.length === 0) {
-    writeJSON('categories.json', DEFAULT_CATEGORIES)
-    return DEFAULT_CATEGORIES
+  const { data, error } = await supabase
+    .from('categories')
+    .select('*')
+    .order('sort_order', { ascending: true })
+  if (error) throw error
+
+  if (!data || data.length === 0) {
+    const rows = DEFAULT_CATEGORIES.map(c => ({
+      slug: c.slug, label: c.label, sort_order: c.order,
+    }))
+    const { data: seeded } = await supabase.from('categories').insert(rows).select()
+    return (seeded || []).map(r => ({
+      slug: r.slug as string,
+      label: r.label as string,
+      order: r.sort_order as number,
+    }))
   }
-  return [...data].sort((a, b) => a.order - b.order)
+
+  return data.map(r => ({
+    slug: r.slug as string,
+    label: r.label as string,
+    order: r.sort_order as number,
+  }))
 }
 
 export async function saveCategories(cats: CategoryDef[]): Promise<void> {
-  writeJSON('categories.json', cats.map((c, i) => ({ ...c, order: i })))
+  const rows = cats.map((c, i) => ({ slug: c.slug, label: c.label, sort_order: i }))
+  const { error } = await supabase
+    .from('categories')
+    .upsert(rows, { onConflict: 'slug' })
+  if (error) throw error
 }
 
 // ─── Stats ────────────────────────────────────────────────────────────────────
+
 export async function getStats() {
   const [orders, consultations, products] = await Promise.all([
     getAllOrders(), getAllConsultations(), getAllProducts()
   ])
+  const today = new Date().toISOString().slice(0, 10)
   return {
     totalOrders: orders.length,
     newOrders: orders.filter(o => o.status === 'new').length,
     revenue: orders.filter(o => o.status !== 'cancelled').reduce((s, o) => s + o.total, 0),
-    todayOrders: orders.filter(o => o.date.startsWith(new Date().toISOString().slice(0, 10))).length,
+    todayOrders: orders.filter(o => o.date.startsWith(today)).length,
     totalProducts: products.length,
     newConsults: consultations.filter(c => c.status === 'new').length,
     recentOrders: orders.slice(0, 5),

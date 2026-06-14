@@ -22,7 +22,6 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Назва, категорія та ціна обов\'язкові' }, { status: 400 })
     }
     const id = await createProduct({
-      id: '',
       name, cat, price: Number(price),
       oldPrice: oldPrice ? Number(oldPrice) : null,
       badge: badge || '',

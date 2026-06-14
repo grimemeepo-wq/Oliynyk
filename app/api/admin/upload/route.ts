@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { writeFile, mkdir } from 'fs/promises'
-import { join } from 'path'
 import { validateSession } from '@/lib/db'
+import { supabase } from '@/lib/supabase'
 import { cookies } from 'next/headers'
 
 async function auth() {
@@ -22,15 +21,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Only images allowed' }, { status: 400 })
   }
 
-  const bytes = await file.arrayBuffer()
-  const buffer = Buffer.from(bytes)
-
   const ext = file.name.split('.').pop()?.toLowerCase() || 'jpg'
   const name = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`
+  const bytes = await file.arrayBuffer()
 
-  const uploadDir = join(process.cwd(), 'public', 'uploads')
-  await mkdir(uploadDir, { recursive: true })
-  await writeFile(join(uploadDir, name), buffer)
+  const { error } = await supabase.storage
+    .from('uploads')
+    .upload(name, bytes, { contentType: file.type, upsert: false })
 
-  return NextResponse.json({ url: `/uploads/${name}` })
+  if (error) {
+    console.error('Storage upload error:', error)
+    return NextResponse.json({ error: 'Upload failed' }, { status: 500 })
+  }
+
+  const { data } = supabase.storage.from('uploads').getPublicUrl(name)
+  return NextResponse.json({ url: data.publicUrl })
 }
