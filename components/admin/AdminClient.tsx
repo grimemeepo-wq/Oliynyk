@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef, FormEvent, DragEvent } from 'react'
-import type { Product, Order, Consultation, CategoryDef, OptionGroup } from '@/lib/types'
+import type { Product, Order, Consultation, CategoryDef, OptionGroup, Category } from '@/lib/types'
 import { CAT_LABELS } from '@/lib/types'
 import { useRouter } from 'next/navigation'
 
